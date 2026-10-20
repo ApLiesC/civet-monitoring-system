@@ -1,51 +1,81 @@
 
+import json
 from pathlib import Path
 import cv2
 import numpy as np
 
 PROJECT_DIR = Path(__file__).resolve().parent.parent
+CONFIG_PATH = PROJECT_DIR / "config" / "config.json"
 
 INPUT_DIR = PROJECT_DIR / "data" / "selected_frames"
 OUTPUT_DIR = PROJECT_DIR / "data" / "enhanced_frames"
 
-# Enhancement settings from the testing configuration
-CLAHE_CLIP = 2.0
-CLAHE_GRID = 8
-GAMMA = 0.85
-GAUSSIAN_KERNEL = (3, 3)
-
 IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".bmp"}
 
 
-def enhance_frame(frame):
-    # 1. Convert to grayscale
-    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+def load_config():
+    with CONFIG_PATH.open("r", encoding="utf-8") as file:
+        return json.load(file)
 
-    # 2. Apply mild smoothing
-    gray = cv2.GaussianBlur(gray, GAUSSIAN_KERNEL, 0)
 
-    # 3. Improve local contrast
-    clahe = cv2.createCLAHE(
-        clipLimit=CLAHE_CLIP,
-        tileGridSize=(CLAHE_GRID, CLAHE_GRID)
-    )
-    enhanced = clahe.apply(gray)
+def enhance_frame(frame, settings, gamma_table):
+    enhanced = frame
 
-    # 4. Apply gamma correction
-    lookup_table = np.clip(
-        np.rint(
-            255 * ((np.arange(256) / 255.0) ** GAMMA)
-        ),
-        0,
-        255
-    ).astype(np.uint8)
+    # 1. Convert to grayscale if enabled
+    if settings["grayscale"]:
+        enhanced = cv2.cvtColor(enhanced, cv2.COLOR_BGR2GRAY)
 
-    enhanced = cv2.LUT(enhanced, lookup_table)
+    # 2. Apply denoising if enabled
+    if settings["denoise"]:
+        strength = float(settings["denoise_strength"])
+
+        if enhanced.ndim == 2:
+            # Grayscale denoising
+            enhanced = cv2.fastNlMeansDenoising(
+                enhanced,
+                None,
+                h=strength
+            )
+        else:
+            # Color denoising
+            enhanced = cv2.fastNlMeansDenoisingColored(
+                enhanced,
+                None,
+                h=strength,
+                hColor=strength
+            )
+
+    # 3. Apply CLAHE if enabled
+    if settings["clahe"]:
+        clahe = cv2.createCLAHE(
+            clipLimit=float(settings["clahe_clip"]),
+            tileGridSize=(
+                int(settings["clahe_grid"]),
+                int(settings["clahe_grid"])
+            )
+        )
+
+        if enhanced.ndim == 2:
+            enhanced = clahe.apply(enhanced)
+        else:
+            # Apply CLAHE to brightness while preserving color
+            lab = cv2.cvtColor(enhanced, cv2.COLOR_BGR2LAB)
+            lightness, a, b = cv2.split(lab)
+            lightness = clahe.apply(lightness)
+            lab = cv2.merge((lightness, a, b))
+            enhanced = cv2.cvtColor(lab, cv2.COLOR_LAB2BGR)
+
+    # 4. Apply gamma correction if enabled
+    if gamma_table is not None:
+        enhanced = cv2.LUT(enhanced, gamma_table)
 
     return enhanced
 
 
 def main():
+    config = load_config()
+    settings = config["enhancement"]
+
     if not INPUT_DIR.exists():
         print(f"Input folder not found: {INPUT_DIR}")
         return
@@ -60,6 +90,33 @@ def main():
         print(f"No selected images found in {INPUT_DIR}")
         return
 
+    # Build the gamma lookup table once
+    gamma_table = None
+
+    if settings["gamma"] is not None:
+        gamma = float(settings["gamma"])
+
+        if gamma <= 0:
+            raise ValueError("gamma must be greater than 0")
+
+        gamma_table = np.clip(
+            np.rint(
+                255 * (
+                    (np.arange(256, dtype=np.float32) / 255.0)
+                    ** gamma
+                )
+            ),
+            0,
+            255
+        ).astype(np.uint8)
+
+    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+
+    print(f"Grayscale: {settings['grayscale']}")
+    print(f"Denoise: {settings['denoise']}")
+    print(f"CLAHE: {settings['clahe']}")
+    print(f"Gamma: {settings['gamma']}")
+
     processed = 0
 
     for image_path in images:
@@ -73,7 +130,7 @@ def main():
             print(f"Could not read: {image_path}")
             continue
 
-        enhanced = enhance_frame(frame)
+        enhanced = enhance_frame(frame, settings, gamma_table)
 
         if cv2.imwrite(str(output_path), enhanced):
             processed += 1
