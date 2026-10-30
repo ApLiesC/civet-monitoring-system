@@ -1,12 +1,8 @@
-
 from pathlib import Path
-
 from ultralytics import YOLO
-
 
 # Project paths
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
-
 DATA_YAML = (
     PROJECT_ROOT
     / "data"
@@ -40,7 +36,7 @@ def main():
         imgsz=IMAGE_SIZE,
         batch=BATCH_SIZE,
         patience=PATIENCE,
-        project=str(PROJECT_ROOT / "runs"),
+        project=str(PROJECT_ROOT / "models"),
         name="civet_detector_yolo11n",
         seed=42,
         plots=True,
@@ -51,7 +47,7 @@ def main():
     print("Training finished.")
     print(
         "Best weights: "
-        f"{PROJECT_ROOT / 'runs' / 'civet_detector_yolo11n' / 'weights' / 'best.pt'}"
+        f"{PROJECT_ROOT / 'models' / 'civet_detector_yolo11n' / 'weights' / 'best.pt'}"
     )
 
 
