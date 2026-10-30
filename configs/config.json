@@ -1,0 +1,12 @@
+{
+  "frame_interval_seconds": 1,
+  "enhancement": {
+    "grayscale": true,
+    "denoise": true,
+    "denoise_strength": 3.0,
+    "clahe": true,
+    "clahe_clip": 2.0,
+    "clahe_grid": 8,
+    "gamma": 0.85
+  }
+}

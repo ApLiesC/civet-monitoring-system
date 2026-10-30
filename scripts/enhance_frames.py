@@ -5,7 +5,7 @@ import cv2
 import numpy as np
 
 PROJECT_DIR = Path(__file__).resolve().parent.parent
-CONFIG_PATH = PROJECT_DIR / "config" / "config.json"
+CONFIG_PATH = PROJECT_DIR / "configs" / "config.json"
 
 INPUT_DIR = PROJECT_DIR / "data" / "selected_frames"
 OUTPUT_DIR = PROJECT_DIR / "data" / "enhanced_frames"

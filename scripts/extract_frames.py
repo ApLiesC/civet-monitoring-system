@@ -4,7 +4,7 @@ from pathlib import Path
 import cv2
 
 PROJECT_DIR = Path(__file__).resolve().parent.parent
-CONFIG_PATH = PROJECT_DIR / "config" / "config.json"
+CONFIG_PATH = PROJECT_DIR / "configs" / "config.json"
 
 VIDEO_DIR = PROJECT_DIR / "data" / "videos"
 OUTPUT_DIR = PROJECT_DIR / "data" / "raw_frames"
