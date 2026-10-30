@@ -4,7 +4,7 @@ from pathlib import Path
 import cv2
 import numpy as np
 
-PROJECT_DIR = Path(__file__).resolve().parent.parent
+PROJECT_DIR = Path(__file__).resolve().parents[2]
 CONFIG_PATH = PROJECT_DIR / "configs" / "config.json"
 
 INPUT_DIR = PROJECT_DIR / "data" / "selected_frames"

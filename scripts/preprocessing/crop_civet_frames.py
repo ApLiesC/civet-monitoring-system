@@ -10,7 +10,7 @@ from ultralytics import YOLO
 # CONFIGURATION
 # ==================================================
 
-PROJECT_DIR = Path(__file__).resolve().parent.parent
+PROJECT_DIR = Path(__file__).resolve().parents[2]
 
 MODEL_PATH = (
     PROJECT_DIR

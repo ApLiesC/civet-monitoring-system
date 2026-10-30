@@ -2,7 +2,7 @@ from pathlib import Path
 from ultralytics import YOLO
 
 # Project paths
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DATA_YAML = (
     PROJECT_ROOT
     / "data"

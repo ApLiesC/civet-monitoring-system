@@ -1,15 +1,23 @@
-
 from pathlib import Path
 from ultralytics import YOLO
 
-PROJECT_DIR = Path(__file__).resolve().parent.parent
+# Project paths
+PROJECT_DIR = Path(__file__).resolve().parents[2]
 
 MODEL_PATH = (
-    PROJECT_DIR / "models" / "civet_detector_yolo11n"
-    / "weights" / "best.pt"
+    PROJECT_DIR
+    / "models"
+    / "civet_detector_yolo11n-2"
+    / "weights"
+    / "best.pt"
 )
 
-VIDEO_PATH = PROJECT_DIR / "data" / "videos" / "resting8-4.mp4"
+VIDEO_PATH = (
+    PROJECT_DIR
+    / "data"
+    / "videos"
+    / "locomotion11.mp4"
+)
 
 model = YOLO(str(MODEL_PATH))
 
