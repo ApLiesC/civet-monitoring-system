@@ -11,14 +11,27 @@
   <h1>Civet behavior summary</h1>
   <p class="sub">Behaviors detected by the model, with start time, stop time and duration.</p>
   <div class="bar">
-    <label for="day">Day</label>
-    <select id="day"></select>
+    <div class="group" role="group" aria-labelledby="gw">
+      <span class="group-title" id="gw">Week</span>
+      <div class="group-row">
+        <button id="prev" type="button" aria-label="Previous week">&larr;</button>
+        <select id="week" aria-label="Week"></select>
+        <button id="next" type="button" aria-label="Next week">&rarr;</button>
+      </div>
+    </div>
+    <span class="then" aria-hidden="true">&rsaquo;</span>
+    <div class="group" role="group" aria-labelledby="gd">
+      <span class="group-title" id="gd">Day within week</span>
+      <div class="group-row">
+        <select id="day" aria-label="Day"></select>
+      </div>
+    </div>
     <span id="status" class="sub"></span>
   </div>
   <div class="kpis" id="kpis"></div>
   <div class="grid">
     <section class="card"><h2>Active vs inactive time</h2><div class="chart"><canvas id="pie"></canvas></div></section>
-    <section class="card"><h2>Frequency per day</h2><div class="chart"><canvas id="bar"></canvas></div></section>
+    <section class="card"><h2>Frequency per day (selected week)</h2><div class="chart"><canvas id="bar"></canvas></div></section>
   </div>
   <div class="tables" id="tables"></div>
 </main>
