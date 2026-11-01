@@ -9,6 +9,7 @@ from classifier import CivetClassifier
 from movement_analyzer import MovementAnalyzer
 from video_processor import BehaviorVideoProcessor
 from output import BehaviorOutput
+from report_generator import BehaviorReportGenerator
 
 
 PROJECT_DIR = Path(__file__).resolve().parents[2]
@@ -295,6 +296,19 @@ def main():
                     processor.recording_start_timestamp
                 ),
                 video_duration=processor.duration_seconds,
+            )
+
+
+            # Generate the Excel report after all CSV files are saved.
+            report_generator = BehaviorReportGenerator(
+                output_dir=output.output_dir,
+            )
+
+            report_generator.generate(
+                activity_records=activity_records,
+                eating_csv_path=output.eating_csv_path,
+                frequency_csv_path=output.frequency_csv_path,
+                metadata_csv_path=output.metadata_csv_path,
             )
 
         # -----------------------------------------------------
