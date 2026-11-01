@@ -1,0 +1,31 @@
+
+{
+    "models": {
+        "detector": "models/civet_detector_yolo11n-2/weights/best.pt",
+        "classifier": "models/civet_classifier_yolo11n/weights/best.pt"
+    },
+
+    "video": {
+        "input": "data/videos/locomotion11.mp4",
+        "sample_fps": 8
+    },
+
+    "detection": {
+        "confidence": 0.25,
+        "image_size": 640
+    },
+
+    "classification": {
+        "image_size": 224
+    },
+
+    "cropping": {
+        "padding_ratio": 0.10
+    },
+
+    "output": {
+        "directory": "outputs/behavior_pipeline",
+        "video_filename": "annotated_video.mp4",
+        "csv_filename": "behavior_results.csv"
+    }
+}
