@@ -43,6 +43,14 @@ def format_timestamp(seconds):
     )
 
 
+def format_cctv_timestamp(timestamp):
+    """Format a CCTV datetime as HH:MM:SS."""
+    if timestamp is None:
+        return "Unavailable"
+
+    return timestamp.strftime("%H:%M:%S")
+
+
 def print_records(title, records):
     print(f"\n========== {title} ==========")
 
@@ -59,8 +67,25 @@ def print_records(title, records):
         label = record.get("behavior", record.get("state"))
         print(f"State/Behavior: {label}")
 
-        print(f"Start: {format_timestamp(record['start_time'])}")
-        print(f"End: {format_timestamp(record['end_time'])}")
+        print(
+            f"CCTV Start: "
+            f"{format_cctv_timestamp(record.get('cctv_start_time'))}"
+        )
+
+        print(
+            f"CCTV End: "
+            f"{format_cctv_timestamp(record.get('cctv_end_time'))}"
+        )
+
+        print(
+            f"Elapsed Start: "
+            f"{format_timestamp(record['start_time'])}"
+        )
+
+        print(
+            f"Elapsed End: "
+            f"{format_timestamp(record['end_time'])}"
+        )
 
         print(
             f"Duration: {record['duration_seconds']:.2f} seconds"
@@ -174,6 +199,11 @@ def main():
             "eating_frequency.csv",
         ),
 
+        metadata_csv_filename=output_config.get(
+            "metadata_csv_filename",
+            "session_metadata.csv",
+        ),
+
         frequency_interval_seconds=output_config.get(
             "frequency_interval_seconds",
             3600,
@@ -211,6 +241,7 @@ def main():
                     source_fps=processor.source_fps,
                     sample_interval=processor.sample_interval,
                 )
+
                 output_started = True
 
             output.write(result)
@@ -222,23 +253,47 @@ def main():
 
             status = result["status"]
 
-            if status in stats:
-                stats[status] += 1
+            if status == "locomotion":
+                stats["locomotion"] += 1
+
+            elif status == "classified":
+                stats["classified"] += 1
+
+            elif status == "classification_failed":
+                stats["classification_failed"] += 1
+
+            elif status == "movement_unknown":
+                stats["movement_unknown"] += 1
+
+            elif status == "not_detected":
+                stats["not_detected"] += 1
 
         # -----------------------------------------------------
-        # 7. Save activity and eating records
+        # 7. Save activity, eating, and session records
         # -----------------------------------------------------
 
         activity_records = processor.activity_records
         eating_events = processor.eating_events
 
         if output_started:
+
             output.write_activity_records(activity_records)
 
             output.write_eating_records(eating_events)
 
             output.write_eating_frequency(
                 events=eating_events,
+                video_duration=processor.duration_seconds,
+                recording_start_timestamp=(
+                    processor.recording_start_timestamp
+                ),
+            )
+
+            output.write_session_metadata(
+                recording_date=processor.recording_date,
+                recording_start_timestamp=(
+                    processor.recording_start_timestamp
+                ),
                 video_duration=processor.duration_seconds,
             )
 
@@ -272,6 +327,13 @@ def main():
 
         print(
             f"Total confirmed eating episodes: {len(eating_events)}"
+        )
+
+        print(f"Recording date: {processor.recording_date or 'Unavailable'}")
+
+        print(
+            "Recording start: "
+            f"{processor.recording_start_timestamp or 'Unavailable'}"
         )
 
         print_records("ACTIVITY RECORDS", activity_records)

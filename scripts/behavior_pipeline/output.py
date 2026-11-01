@@ -2,7 +2,7 @@
 """Save annotated video and civet behavior records."""
 
 import csv
-import math
+from datetime import datetime, time, timedelta
 from pathlib import Path
 
 import cv2
@@ -17,6 +17,7 @@ class BehaviorOutput:
         activity_csv_filename="activity_records.csv",
         eating_csv_filename="eating_records.csv",
         frequency_csv_filename="eating_frequency.csv",
+        metadata_csv_filename="session_metadata.csv",
         frequency_interval_seconds=3600,
     ):
         self.output_dir = Path(output_dir)
@@ -27,6 +28,7 @@ class BehaviorOutput:
         self.activity_csv_filename = activity_csv_filename
         self.eating_csv_filename = eating_csv_filename
         self.frequency_csv_filename = frequency_csv_filename
+        self.metadata_csv_filename = metadata_csv_filename
 
         self.frequency_interval_seconds = frequency_interval_seconds
 
@@ -43,6 +45,7 @@ class BehaviorOutput:
         self.activity_csv_path = None
         self.eating_csv_path = None
         self.frequency_csv_path = None
+        self.metadata_csv_path = None
 
     def start(self, source_fps, sample_interval):
         """Initialize output directories and CSV files."""
@@ -63,6 +66,10 @@ class BehaviorOutput:
             self.output_dir / self.frequency_csv_filename
         )
 
+        self.metadata_csv_path = (
+            self.output_dir / self.metadata_csv_filename
+        )
+
         self.source_fps = source_fps
         self.output_fps = source_fps / sample_interval
 
@@ -78,6 +85,7 @@ class BehaviorOutput:
 
         self.frame_csv_writer.writerow([
             "timestamp_seconds",
+            "cctv_timestamp",
             "frame_index",
             "status",
             "detected",
@@ -99,10 +107,11 @@ class BehaviorOutput:
         print(f"Activity CSV: {self.activity_csv_path}")
         print(f"Eating CSV: {self.eating_csv_path}")
         print(f"Eating frequency CSV: {self.frequency_csv_path}")
+        print(f"Session metadata CSV: {self.metadata_csv_path}")
 
     @staticmethod
     def format_timestamp(seconds):
-        """Convert seconds into HH:MM:SS."""
+        """Convert elapsed seconds into HH:MM:SS."""
         seconds = max(0, int(seconds))
 
         hours = seconds // 3600
@@ -114,6 +123,39 @@ class BehaviorOutput:
             f"{minutes:02d}:"
             f"{remaining_seconds:02d}"
         )
+
+    @staticmethod
+    def format_cctv_time(timestamp):
+        """Convert a CCTV datetime or time into HH:MM:SS."""
+        if timestamp is None:
+            return ""
+
+        return timestamp.strftime("%H:%M:%S")
+
+    @staticmethod
+    def format_cctv_timestamp(timestamp):
+        """
+        Format a CCTV timestamp for CSV output.
+
+        datetime -> YYYY-MM-DD HH:MM:SS
+        time     -> HH:MM:SS
+        None     -> empty string
+        """
+        if timestamp is None:
+            return ""
+
+        if isinstance(timestamp, datetime):
+            return timestamp.isoformat(
+                sep=" ",
+                timespec="seconds",
+            )
+
+        if isinstance(timestamp, time):
+            return timestamp.isoformat(
+                timespec="seconds",
+            )
+
+        return str(timestamp)
 
     @staticmethod
     def get_behavior_label(behavior, status):
@@ -162,8 +204,6 @@ class BehaviorOutput:
             label_x = max(0, int(x1))
             label_y = int(y1) - label_height
 
-            # If there is insufficient space above the bounding box,
-            # place the label inside the top of the bounding box.
             if label_y < 0:
                 label_y = int(y1)
 
@@ -181,7 +221,6 @@ class BehaviorOutput:
             label_x = 20
             label_y = 20
 
-        # Draw label background.
         cv2.rectangle(
             frame,
             (label_x, label_y),
@@ -193,7 +232,6 @@ class BehaviorOutput:
             -1,
         )
 
-        # Draw label text.
         cv2.putText(
             frame,
             label,
@@ -220,13 +258,9 @@ class BehaviorOutput:
         activity_state = result["activity_state"]
         pending_state = result["pending_activity_state"]
 
-        # -------------------------------------------------
-        # 1. Detection information
-        # -------------------------------------------------
-
+        # 1. Detection information.
         detected = detection is not None
         detection_confidence = None
-
         bbox = None
 
         if detected:
@@ -247,17 +281,11 @@ class BehaviorOutput:
                 2,
             )
 
-        # -------------------------------------------------
-        # 2. Movement information
-        # -------------------------------------------------
-
+        # 2. Movement information.
         movement_state = movement["state"]
         movement_speed = movement["speed"]
 
-        # -------------------------------------------------
-        # 3. Classification information
-        # -------------------------------------------------
-
+        # 3. Classification information.
         classification_confidence = None
 
         if classification is not None:
@@ -265,12 +293,14 @@ class BehaviorOutput:
                 "confidence"
             )
 
-        # -------------------------------------------------
-        # 4. Write frame-level CSV
-        # -------------------------------------------------
+        # 4. Write frame-level CSV.
+        cctv_timestamp = self.format_cctv_timestamp(
+            result.get("cctv_timestamp")
+        )
 
         self.frame_csv_writer.writerow([
             round(result["timestamp"], 3),
+            cctv_timestamp,
             result["frame_index"],
             result["status"],
             detected,
@@ -284,10 +314,7 @@ class BehaviorOutput:
             classification_confidence,
         ])
 
-        # -------------------------------------------------
-        # 5. Display activity and behavior label
-        # -------------------------------------------------
-
+        # 5. Display activity and behavior label.
         label = self.get_behavior_label(
             behavior=behavior,
             status=result["status"],
@@ -299,10 +326,7 @@ class BehaviorOutput:
             bbox=bbox,
         )
 
-        # -------------------------------------------------
-        # 6. Display debugging information
-        # -------------------------------------------------
-
+        # 6. Display debugging information.
         if movement_speed is not None:
             movement_text = (
                 f"Movement: {movement_speed:.1f} px/sec"
@@ -338,10 +362,7 @@ class BehaviorOutput:
                 cv2.LINE_AA,
             )
 
-        # -------------------------------------------------
-        # 7. Initialize and write annotated video
-        # -------------------------------------------------
-
+        # 7. Initialize and write annotated video.
         if self.video_writer is None:
             height, width = frame.shape[:2]
 
@@ -361,8 +382,126 @@ class BehaviorOutput:
 
         self.video_writer.write(frame)
 
+    def write_session_metadata(
+        self,
+        recording_date,
+        recording_start_timestamp,
+        video_duration,
+    ):
+        """Save recording information once for the processing session."""
+
+        recording_end_timestamp = None
+
+        if recording_start_timestamp is not None:
+            recording_end_timestamp = (
+                recording_start_timestamp
+                + timedelta(seconds=video_duration)
+            )
+
+        with open(
+            self.metadata_csv_path,
+            "w",
+            newline="",
+            encoding="utf-8",
+        ) as file:
+            writer = csv.writer(file)
+
+            writer.writerow(["metadata", "value"])
+
+            writer.writerow([
+                "recording_date",
+                recording_date or "",
+            ])
+
+            writer.writerow([
+                "recording_start_timestamp",
+                self.format_cctv_timestamp(
+                    recording_start_timestamp
+                ),
+            ])
+
+            writer.writerow([
+                "recording_end_timestamp",
+                self.format_cctv_timestamp(
+                    recording_end_timestamp
+                ),
+            ])
+
+            writer.writerow([
+                "video_duration_seconds",
+                round(video_duration, 3),
+            ])
+
+            writer.writerow([
+                "source_fps",
+                self.source_fps,
+            ])
+
+            writer.writerow([
+                "output_fps",
+                self.output_fps,
+            ])
+
+    
     def write_activity_records(self, records):
-        """Save overall activity-state intervals."""
+        """
+        Save activity intervals as paired active/inactive cycles,
+        with separate columns for not_visible intervals.
+        """
+
+        rows = []
+        pending_active_row = None
+
+        for record in records:
+            state = record["state"]
+
+            start = self.format_cctv_time(
+                record.get("cctv_start_time")
+            )
+
+            end = self.format_cctv_time(
+                record.get("cctv_end_time")
+            )
+
+            if state == "active":
+                if pending_active_row is not None:
+                    rows.append(pending_active_row)
+
+                pending_active_row = [
+                    start, end,
+                    "", "",
+                    "", "",
+                ]
+
+            elif state == "inactive":
+                if pending_active_row is not None:
+                    pending_active_row[2] = start
+                    pending_active_row[3] = end
+
+                    rows.append(pending_active_row)
+                    pending_active_row = None
+
+                else:
+                    rows.append([
+                        "", "",
+                        start, end,
+                        "", "",
+                    ])
+
+            elif state == "not_visible":
+                if pending_active_row is not None:
+                    rows.append(pending_active_row)
+                    pending_active_row = None
+
+                rows.append([
+                    "", "",
+                    "", "",
+                    start, end,
+                ])
+
+        if pending_active_row is not None:
+            rows.append(pending_active_row)
+
         with open(
             self.activity_csv_path,
             "w",
@@ -372,29 +511,22 @@ class BehaviorOutput:
             writer = csv.writer(file)
 
             writer.writerow([
-                "state",
-                "start_time_seconds",
-                "end_time_seconds",
-                "duration_seconds",
-                "start_time",
-                "end_time",
+                "No.",
+                "Active Start",
+                "Active Stop",
+                "Inactive Start",
+                "Inactive Stop",
+                "Not Visible Start",
+                "Not Visible Stop",
             ])
 
-            for record in records:
-                start = record["start_time"]
-                end = record["end_time"]
+            for index, row in enumerate(rows, start=1):
+                writer.writerow([index, *row])
 
-                writer.writerow([
-                    record["state"],
-                    round(start, 3),
-                    round(end, 3),
-                    round(record["duration_seconds"], 3),
-                    self.format_timestamp(start),
-                    self.format_timestamp(end),
-                ])
 
     def write_eating_records(self, events):
-        """Save confirmed individual eating episodes."""
+        """Save confirmed individual eating episodes using CCTV time."""
+
         with open(
             self.eating_csv_path,
             "w",
@@ -404,37 +536,39 @@ class BehaviorOutput:
             writer = csv.writer(file)
 
             writer.writerow([
-                "event_id",
-                "start_time_seconds",
-                "end_time_seconds",
-                "duration_seconds",
-                "start_time",
-                "end_time",
+                "No.",
+                "Behavior",
+                "Start Time",
+                "End Time",
+                "Duration (seconds)",
             ])
 
-            for event in events:
-                start = event["start_time"]
-                end = event["end_time"]
-
+            for index, event in enumerate(events, start=1):
                 writer.writerow([
-                    event["event_id"],
-                    round(start, 3),
-                    round(end, 3),
+                    index,
+                    event.get("behavior", "eating").capitalize(),
+                    self.format_cctv_time(
+                        event.get("cctv_start_time")
+                    ),
+                    self.format_cctv_time(
+                        event.get("cctv_end_time")
+                    ),
                     round(event["duration_seconds"], 3),
-                    self.format_timestamp(start),
-                    self.format_timestamp(end),
                 ])
 
     def write_eating_frequency(
         self,
         events,
         video_duration,
+        recording_start_timestamp=None,
     ):
         """
-        Count confirmed eating episodes by their start time.
+        Count confirmed eating episodes by their CCTV start time.
 
-        Intervals use [start, end) boundaries.
+        Hourly intervals use [start, end) boundaries.
+        Hours with zero eating episodes are included.
         """
+
         interval = self.frequency_interval_seconds
 
         if interval <= 0:
@@ -442,17 +576,69 @@ class BehaviorOutput:
                 "frequency_interval_seconds must be greater than zero."
             )
 
-        number_of_intervals = math.ceil(video_duration / interval)
+        if recording_start_timestamp is None:
+            print(
+                "[WARNING] CCTV recording timestamp unavailable. "
+                "Eating frequency cannot be grouped by CCTV hour."
+            )
 
-        counts = [0] * number_of_intervals
+            with open(
+                self.frequency_csv_path,
+                "w",
+                newline="",
+                encoding="utf-8",
+            ) as file:
+                writer = csv.writer(file)
+                writer.writerow([
+                    "No.",
+                    "Duration",
+                    "Behavior",
+                    "Frequency",
+                ])
+
+            return
+
+        recording_end_timestamp = (
+            recording_start_timestamp
+            + timedelta(seconds=video_duration)
+        )
+
+        first_interval_start = recording_start_timestamp.replace(
+            minute=0,
+            second=0,
+            microsecond=0,
+        )
+
+        intervals = []
+        current_start = first_interval_start
+
+        while current_start < recording_end_timestamp:
+            current_end = current_start + timedelta(
+                seconds=interval
+            )
+
+            intervals.append({
+                "start": current_start,
+                "end": current_end,
+                "count": 0,
+            })
+
+            current_start = current_end
 
         for event in events:
-            start_time = event["start_time"]
+            event_start = event.get("cctv_start_time")
 
-            interval_index = int(start_time // interval)
+            if event_start is None:
+                continue
 
-            if 0 <= interval_index < number_of_intervals:
-                counts[interval_index] += 1
+            for time_interval in intervals:
+                if (
+                    time_interval["start"]
+                    <= event_start
+                    < time_interval["end"]
+                ):
+                    time_interval["count"] += 1
+                    break
 
         with open(
             self.frequency_csv_path,
@@ -463,30 +649,34 @@ class BehaviorOutput:
             writer = csv.writer(file)
 
             writer.writerow([
-                "interval_start_seconds",
-                "interval_end_seconds",
-                "interval_start",
-                "interval_end",
-                "eating_episode_count",
+                "No.",
+                "Duration",
+                "Behavior",
+                "Frequency",
             ])
 
-            for index, count in enumerate(counts):
-                start = index * interval
-                end = min(
-                    (index + 1) * interval,
-                    video_duration,
+            for index, time_interval in enumerate(
+                intervals,
+                start=1,
+            ):
+                start_label = time_interval["start"].strftime(
+                    "%H:%M"
+                )
+
+                end_label = time_interval["end"].strftime(
+                    "%H:%M"
                 )
 
                 writer.writerow([
-                    round(start, 3),
-                    round(end, 3),
-                    self.format_timestamp(start),
-                    self.format_timestamp(end),
-                    count,
+                    index,
+                    f"{start_label}–{end_label}",
+                    "Eating",
+                    time_interval["count"],
                 ])
 
     def close(self):
         """Release video writer and close the frame CSV."""
+
         if self.video_writer is not None:
             self.video_writer.release()
             self.video_writer = None

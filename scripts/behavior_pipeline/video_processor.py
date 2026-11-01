@@ -2,9 +2,11 @@
 """Process video through detection, movement analysis and behavior tracking."""
 
 import cv2
+from datetime import datetime, date, time, timedelta
 
 from activity_state_manager import ActivityStateManager
 from eating_event_tracker import EatingEventTracker
+from cctv_timestamp_reader import CCTVTimestampReader
 
 
 class BehaviorVideoProcessor:
@@ -24,7 +26,6 @@ class BehaviorVideoProcessor:
         self.detector = detector
         self.classifier = classifier
         self.movement_analyzer = movement_analyzer
-
         self.sample_fps = sample_fps
         self.minimum_classification_confidence = (
             minimum_classification_confidence
@@ -41,6 +42,11 @@ class BehaviorVideoProcessor:
             gap_tolerance=eating_gap_tolerance,
         )
 
+        # CCTV timestamp reader.
+        self.timestamp_reader = CCTVTimestampReader(debug=False)
+        self.timestamp_read_interval = 0.5
+        self.timestamp_max_retry_duration = 5.0
+
         self.source_fps = None
         self.output_fps = None
         self.total_frames = None
@@ -49,6 +55,22 @@ class BehaviorVideoProcessor:
 
         self.activity_records = []
         self.eating_events = []
+
+        # CCTV recording information.
+        # recording_start_timestamp represents estimated video time 0.
+        self.recording_start_timestamp = None
+        self.recording_start_time = None
+        self.recording_start_elapsed = None
+        self.recording_date = None
+
+        # Internal datetime anchor at the first successful OCR reading.
+        # A placeholder date is used only when OCR recognizes time alone.
+        self._recording_time_anchor = None
+        self._has_real_recording_date = False
+
+        # OCR retry information.
+        self.last_timestamp_attempt_elapsed = None
+        self.timestamp_reading_finished = False
 
     def _normalize_classification(self, classification):
         """
@@ -103,10 +125,8 @@ class BehaviorVideoProcessor:
         # Determine overall activity state.
         if behavior in {"locomotion", "eating"}:
             activity_state = "active"
-
         elif behavior == "resting":
             activity_state = "inactive"
-
         else:
             activity_state = None
 
@@ -131,6 +151,205 @@ class BehaviorVideoProcessor:
 
         return activity_state, activity_result, eating_result
 
+    def _convert_elapsed_to_cctv_time(self, elapsed_timestamp):
+        """
+        Convert elapsed video seconds into CCTV date/time.
+
+        Uses the first successful OCR reading as the reference point.
+        """
+        if (
+            self._recording_time_anchor is None
+            or self.recording_start_elapsed is None
+            or elapsed_timestamp is None
+        ):
+            return None
+
+        elapsed_from_ocr = (
+            elapsed_timestamp - self.recording_start_elapsed
+        )
+
+        return self._recording_time_anchor + timedelta(
+            seconds=elapsed_from_ocr
+        )
+
+    def _set_recording_timestamp(
+        self,
+        recognized_timestamp,
+        elapsed_timestamp,
+    ):
+        """
+        Store a recognized CCTV timestamp.
+
+        Supports:
+        - datetime: date and time were recognized.
+        - time: only time was recognized.
+
+        Calculates the estimated CCTV timestamp at video elapsed time 0.
+        """
+        if isinstance(recognized_timestamp, datetime):
+            self._recording_time_anchor = recognized_timestamp
+            self._has_real_recording_date = True
+
+        elif isinstance(recognized_timestamp, time):
+            # Use a placeholder date only for internal datetime arithmetic.
+            self._recording_time_anchor = datetime.combine(
+                date(2000, 1, 1),
+                recognized_timestamp,
+            )
+
+            self._has_real_recording_date = False
+
+        else:
+            return False
+
+        self.recording_start_elapsed = elapsed_timestamp
+
+        # Calculate the estimated CCTV timestamp at video elapsed time 0.
+        self.recording_start_timestamp = (
+            self._convert_elapsed_to_cctv_time(0.0)
+        )
+
+        if self._has_real_recording_date:
+            self.recording_date = (
+                self.recording_start_timestamp.date().isoformat()
+            )
+        else:
+            self.recording_date = None
+
+        self.recording_start_time = (
+            self.recording_start_timestamp.time()
+        )
+
+        return True
+
+    def _read_cctv_timestamp(self, frame, elapsed_timestamp):
+        """
+        Read CCTV time near the beginning of the video.
+
+        OCR is retried every timestamp_read_interval seconds until:
+        - A valid time is extracted, or
+        - timestamp_max_retry_duration is reached.
+
+        Date recognition is optional.
+        After the first successful time reading, no more OCR is performed.
+        """
+
+        if not self.timestamp_reading_finished:
+            should_read = (
+                self.last_timestamp_attempt_elapsed is None
+                or (
+                    elapsed_timestamp - self.last_timestamp_attempt_elapsed
+                    >= self.timestamp_read_interval
+                )
+            )
+
+            if should_read:
+                self.last_timestamp_attempt_elapsed = elapsed_timestamp
+
+                recognized_timestamp = self.timestamp_reader.read(frame)
+
+                if recognized_timestamp is not None:
+                    self._set_recording_timestamp(
+                        recognized_timestamp,
+                        elapsed_timestamp,
+                    )
+
+                    self.timestamp_reading_finished = True
+
+                    print(
+                        "[CCTV TIME] Successfully read OCR time: "
+                        f"{recognized_timestamp.strftime('%H:%M:%S')}"
+                    )
+
+                    print(
+                        "[CCTV TIME] Estimated video start time: "
+                        f"{self.recording_start_time}"
+                    )
+
+                    if self.recording_date is not None:
+                        print(
+                            f"[CCTV DATE] Estimated recording date: "
+                            f"{self.recording_date}"
+                        )
+                    else:
+                        print(
+                            "[CCTV DATE] Date unavailable. "
+                            "Continuing with time only."
+                        )
+
+                else:
+                    print(
+                        f"[CCTV TIME] OCR failed at "
+                        f"{elapsed_timestamp:.2f}s."
+                    )
+
+            # Stop OCR retries after the allowed time.
+            if (
+                not self.timestamp_reading_finished
+                and elapsed_timestamp >= self.timestamp_max_retry_duration
+            ):
+                self.timestamp_reading_finished = True
+
+                print(
+                    "[CCTV TIME] Could not read CCTV time within "
+                    f"{self.timestamp_max_retry_duration:.1f} seconds. "
+                    "CCTV timestamps will be unavailable."
+                )
+
+        if self._recording_time_anchor is None:
+            return None
+
+        estimated_timestamp = self._convert_elapsed_to_cctv_time(
+            elapsed_timestamp
+        )
+
+        if estimated_timestamp is None:
+            return None
+
+        # If the actual date was unavailable, expose only the time.
+        if not self._has_real_recording_date:
+            return estimated_timestamp.time()
+
+        return estimated_timestamp
+
+    def _convert_activity_records_to_cctv_time(self):
+        """
+        Add CCTV timestamps to finalized activity records.
+
+        Original elapsed-time fields are preserved.
+        """
+        for record in self.activity_records:
+            record["cctv_start_time"] = (
+                self._convert_elapsed_to_cctv_time(
+                    record["start_time"]
+                )
+            )
+
+            record["cctv_end_time"] = (
+                self._convert_elapsed_to_cctv_time(
+                    record["end_time"]
+                )
+            )
+
+    def _convert_eating_events_to_cctv_time(self):
+        """
+        Add CCTV timestamps to finalized eating events.
+
+        Original elapsed-time fields are preserved.
+        """
+        for event in self.eating_events:
+            event["cctv_start_time"] = (
+                self._convert_elapsed_to_cctv_time(
+                    event["start_time"]
+                )
+            )
+
+            event["cctv_end_time"] = (
+                self._convert_elapsed_to_cctv_time(
+                    event["end_time"]
+                )
+            )
+
     def process_video(self, video_path):
         cap = cv2.VideoCapture(str(video_path))
 
@@ -139,6 +358,7 @@ class BehaviorVideoProcessor:
 
         try:
             self.source_fps = cap.get(cv2.CAP_PROP_FPS)
+
             self.total_frames = int(
                 cap.get(cv2.CAP_PROP_FRAME_COUNT)
             )
@@ -172,6 +392,17 @@ class BehaviorVideoProcessor:
             self.activity_records = []
             self.eating_events = []
 
+            self.recording_start_timestamp = None
+            self.recording_start_time = None
+            self.recording_start_elapsed = None
+            self.recording_date = None
+
+            self._recording_time_anchor = None
+            self._has_real_recording_date = False
+
+            self.last_timestamp_attempt_elapsed = None
+            self.timestamp_reading_finished = False
+
             frame_index = 0
 
             print(f"Input video: {video_path}")
@@ -186,9 +417,20 @@ class BehaviorVideoProcessor:
                     break
 
                 if frame_index % self.sample_interval == 0:
+
+                    # Elapsed video time.
+                    # Keep this for all existing calculations.
                     timestamp = frame_index / self.source_fps
 
+                    # Read CCTV timestamp near the beginning,
+                    # then estimate it using elapsed video time.
+                    cctv_timestamp = self._read_cctv_timestamp(
+                        frame,
+                        timestamp,
+                    )
+
                     detection = self.detector.detect(frame)
+
                     classification = None
                     behavior = None
                     unknown_reason = None
@@ -223,14 +465,9 @@ class BehaviorVideoProcessor:
                             status = "locomotion"
 
                         elif movement_state == "stationary":
-                            # ---------------------------------
                             # 3. Behavior classification
-                            # ---------------------------------
-
-                            classification = (
-                                self.classifier.classify(
-                                    detection["crop"]
-                                )
+                            classification = self.classifier.classify(
+                                detection["crop"]
                             )
 
                             behavior = self._normalize_classification(
@@ -240,7 +477,6 @@ class BehaviorVideoProcessor:
                             if behavior is None:
                                 status = "classification_failed"
                                 unknown_reason = "classification"
-
                             else:
                                 status = "classified"
 
@@ -275,6 +511,7 @@ class BehaviorVideoProcessor:
                         "frame": frame,
                         "frame_index": frame_index,
                         "timestamp": timestamp,
+                        "cctv_timestamp": cctv_timestamp,
                         "status": status,
                         "detection": detection,
                         "movement": movement,
@@ -302,6 +539,10 @@ class BehaviorVideoProcessor:
                 self.eating_tracker.finalize()
             )
 
+            # Add CCTV timestamps to finalized records.
+            self._convert_activity_records_to_cctv_time()
+            self._convert_eating_events_to_cctv_time()
+
             print("\n========== TRACKING SUMMARY ==========")
             print(
                 f"Activity intervals: {len(self.activity_records)}"
@@ -309,6 +550,22 @@ class BehaviorVideoProcessor:
             print(
                 f"Eating episodes: {len(self.eating_events)}"
             )
+            print(
+                f"Recording date: {self.recording_date}"
+            )
+            print(
+                f"Recording start time: {self.recording_start_time}"
+            )
+
+            if self.recording_start_timestamp is None:
+                print("CCTV timestamp: unavailable")
+            elif self.recording_date is None:
+                print(
+                    "CCTV timestamp mode: time only "
+                    "(date unavailable)"
+                )
+            else:
+                print("CCTV timestamp mode: date and time")
 
         finally:
             cap.release()
