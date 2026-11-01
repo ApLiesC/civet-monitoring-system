@@ -1,32 +1,54 @@
-# civet-monitoring-system
+# Civet Monitoring System
 
-This project prepares CCTV footage for civet detection and trains a YOLO11n object detection model to detect civets in real-world footage.
+A computer vision project for monitoring civet activity using CCTV footage. The system uses YOLO-based object detection and behavior classification to identify civets, determine their activity states, and record behavior events with timestamps.
+
+## Project Overview
+
+The project consists of four main stages:
+
+1. **Data Preparation** – Extract, select, and enhance CCTV frames for dataset creation.
+2. **Civet Detection** – Train a YOLO11n object detection model to locate civets in CCTV footage.
+3. **Behavior Classification** – Train a classification model to recognize civet behaviors.
+4. **Behavior Monitoring Pipeline** – Combine detection, movement analysis, and classification to generate activity records and behavior event summaries.
 
 ## Project Structure
 
 ```text
 civet-monitoring-system/
+├── configs/
+│   ├── config.json                       # Image enhancement settings
+│   └── behavior_pipeline_config.json    # Behavior pipeline settings
+│
 ├── data/
-│   ├── videos/             # Original or manually trimmed CCTV videos
-│   ├── raw_frames/         # Extracted frames
-│   ├── selected_frames/    # Frames selected for annotation
-│   ├── enhanced_frames/    # Enhanced images for annotation
-│   └── civet_dataset/      # Exported YOLO dataset
+│   ├── videos/                            # Original or trimmed CCTV videos
+│   ├── raw_frames/                        # Extracted frames
+│   ├── selected_frames/                   # Frames selected for annotation
+│   ├── enhanced_frames/                   # Enhanced images
+│   └── civet_dataset/                     # Exported YOLO detection dataset
+│
+├── models/
+│   ├── civet_detector_yolo11n/            # Trained civet detector
+│   └── civet_classifier_yolo11n/          # Trained behavior classifier
+│
 ├── scripts/
-│   ├── extract_frames.py
-│   ├── enhance_frames.py
-│   └── train_detector.py
-├── runs/
-│   └── civet_yolo11n-2/    # Example training run output
+│   ├── behavior_pipeline/                 # Complete behavior monitoring pipeline
+│   ├── classification/                    # Behavior classifier training and testing
+│   ├── detection/                         # Civet detector training and testing
+│   └── preprocessing/                     # Frame extraction and image enhancement
+│
+├── runs/                                  # Training and inference outputs
+├── outputs/
+│   └── behavior_pipeline/                 # Behavior pipeline results
+│
 ├── requirements.txt
 └── README.md
 ```
 
-Actual output directories may differ depending on your configuration and previous runs.
+Actual output directories and model paths may differ depending on configuration and previous runs.
 
-## 1. Install Dependencies
+## 1. Installation
 
-Make sure Python is installed. Open a terminal in the project root and run:
+Make sure Python is installed. Open a terminal in the project root and install the dependencies:
 
 ```bash
 pip install -r requirements.txt
@@ -34,74 +56,108 @@ pip install -r requirements.txt
 
 ## 2. Prepare CCTV Videos
 
-Place the videos inside `data/videos/`.
+Place the original CCTV videos inside:
 
-- Organize videos into folders by behavior or camera if needed.
-- Manually trim unnecessary sections where the civet is absent, too far away, or cannot be reliably identified.
-- Preserve the source video names so extracted frames can be traced back to their original videos.
-
-## 3. Extract Frames
-
-Run the frame extraction script:
-
-```bash
-python scripts/extract_frames.py
+```text
+data/videos/
 ```
 
-The script extracts one frame every 2.5 seconds from each video in `data/videos/` and saves the images in `data/raw_frames/`.
+Recommended preparation:
 
-Each filename includes its source video name and timestamp to prevent naming conflicts.
+- Organize videos by camera, date, or behavior if needed.
+- Manually trim unnecessary sections where the civet is absent, too far away, or cannot be reliably identified.
+- Preserve the original video files so extracted frames can be traced back to their sources.
+- Use footage from different lighting conditions, camera views, and civet behaviors.
 
-## 4. Select Frames
+Keep the original CCTV footage unchanged.
 
-Review the extracted images and copy useful frames into `data/selected_frames/`.
+## 3. Extract and Select Frames
+
+Use the frame extraction scripts in:
+
+```text
+scripts/preprocessing/
+```
+
+Extracted frames are saved in:
+
+```text
+data/raw_frames/
+```
+
+Review the extracted frames and copy useful images into:
+
+```text
+data/selected_frames/
+```
 
 Prioritize diversity rather than collecting many nearly identical frames. Include:
 
 - Different body orientations and postures.
-- Different eating poses, including the civet bending its head toward the food tray.
+- Eating poses, including the civet bending toward the food tray.
 - Daytime and nighttime conditions.
 - Different camera views, distances, and positions.
 - Partial occlusions from bushes, trays, and enclosure objects.
 - Difficult backgrounds where the civet blends into the ground.
 
-Include images without civets when useful for teaching the model to distinguish the animal from background objects.
+Include background-only images when useful for improving detection.
 
-Keep track of each image's source video. Frames from the same video must remain in the same dataset split.
+Frames from the same source video should remain in the same dataset split.
 
-## 5. Enhance Selected Frames
+## 4. Enhance Selected Frames
 
-Run the enhancement script:
+Image enhancement settings are stored in:
 
-```bash
-python scripts/enhance_frames.py
+```text
+configs/config.json
 ```
 
-The script applies grayscale conversion, mild Gaussian smoothing, CLAHE contrast enhancement, and gamma correction. Enhanced images are saved in `data/enhanced_frames/`, leaving the original images unchanged.
+The preprocessing scripts apply image enhancement operations such as:
 
-Compare enhanced images with their originals before processing the full dataset. Enhancement should preserve useful details around the civet's body outline, legs, snout, and fur pattern.
+- Grayscale conversion.
+- Gaussian smoothing.
+- CLAHE contrast enhancement.
+- Gamma correction.
 
-Use preprocessing consistently across training, validation, and test images. Real footage used for inference should follow the same preprocessing pipeline used to prepare the training images.
+Enhanced images are saved in:
 
-## 6. Annotate and Export the Dataset
+```text
+data/enhanced_frames/
+```
 
-Use Roboflow to annotate the images from `data/enhanced_frames/`.
+Original images remain unchanged.
 
-1. Create one object-detection class named `civet`.
+Compare enhanced images with their originals before processing the full dataset. Make sure enhancement preserves useful details around the civet's body outline, legs, snout, and fur pattern.
+
+Use consistent preprocessing for training, validation, and test images. CCTV footage used for inference should also follow the preprocessing approach used when preparing the training images.
+
+## 5. Annotate and Export the Detection Dataset
+
+Use Roboflow to annotate images from `data/enhanced_frames/`.
+
+1. Create one object detection class named `civet`.
 2. Draw a bounding box around each visible, identifiable civet.
-3. Annotate the whole animal consistently rather than labeling separate body parts as individual civets.
-4. For partially occluded animals, draw a consistent box around the identifiable visible extent of the animal.
-5. Review the annotations, especially around food trays, shadows, and bushes.
+3. Annotate the whole animal consistently rather than labeling separate body parts.
+4. For partially occluded animals, draw a consistent box around the identifiable visible extent.
+5. Review annotations around food trays, shadows, and bushes.
 6. Split the dataset into training, validation, and test sets.
 7. Export the dataset in YOLO format into `data/civet_dataset/`.
 
-**Important:** Split by source video rather than randomly splitting individual frames. Do not place frames from the same video in different splits, as similar frames can make evaluation results overly optimistic.
+**Important:** Split the dataset by source video rather than randomly splitting individual frames. Frames from the same video should not appear in different splits, as similar frames can make evaluation results overly optimistic.
 
-The exported dataset should contain a YOLO configuration file, typically `data.yaml`, and the corresponding images and labels.
+The exported dataset should contain a YOLO configuration file, typically `data.yaml`, along with the corresponding images and labels.
 
-## 7. Configure Model Training
+## 6. Train the Civet Detection Model
 
-Open `scripts/train_detector.py` and check the training configuration:
+The detection scripts are located in:
+
+```text
+scripts/detection/
+```
+
+The project uses a pretrained YOLO11n model fine-tuned on the civet detection dataset.
+
+The current training configuration uses the following starting settings:
 
 ```python
 MODEL_NAME = "yolo11n.pt"
@@ -111,114 +167,327 @@ BATCH_SIZE = 4
 PATIENCE = 12
 ```
 
-These are the current recommended starting settings for this project. The model may stop before reaching the maximum number of epochs if validation performance does not improve.
-
-Check that the dataset path points to the exported YOLO configuration file:
+The dataset configuration should point to:
 
 ```text
 data/civet_dataset/data.yaml
 ```
 
-The training script should use this dataset configuration and save its results to a run directory under `runs/`.
-
-## 8. Train the Detector
-
-From the project root, run:
+Run the detector training script from the project root:
 
 ```bash
-python scripts/train_detector.py
+python scripts/detection/train_detector.py
 ```
 
-Training uses the pretrained YOLO11n model and fine-tunes it on the annotated civet dataset.
+After training, the output directory contains model weights and training results.
 
-After training, the run directory contains model weights and training results. The two main weight files are:
+- `best.pt` – Model checkpoint with the best validation performance.
+- `last.pt` – Model checkpoint from the final training epoch.
 
-- `weights/best.pt` — model checkpoint with the best validation results.
-- `weights/last.pt` — model checkpoint from the final training epoch.
-
-For example, the latest run may save its best model at:
+For example:
 
 ```text
-runs/civet_yolo11n-2/weights/best.pt
+models/civet_detector_yolo11n/weights/best.pt
 ```
 
-Use the actual path printed by the training script or shown in the training log. The run directory may change when you train again.
+Use the actual model path produced by your training process.
 
-## 9. Test the Model on Real CCTV Footage
+## 7. Train the Behavior Classification Model
 
-Test the trained model on a CCTV video that was not used to train the model. Prefer footage containing challenging situations such as eating, partial occlusion, and low-contrast nighttime scenes.
+The classification scripts are located in:
 
-### 9.1 Run inference
-
-Open a terminal in the project root:
-
-```bash
-cd D:\civet-monitoring-system
+```text
+scripts/classification/
 ```
 
-Run the detector using the trained weights:
+The behavior classifier is used to recognize the civet's behavior from detected civet image crops.
 
-```bash
-yolo detect predict model="models/civet_detector_yolo11n/weights/best.pt" source="video_file_path" conf=0.25 save=True
+The classification dataset should contain labeled examples of the behaviors supported by the model.
+
+The current pipeline expects the classifier to distinguish:
+
+- **Eating** – The civet is eating.
+- **Resting** – The civet is stationary or resting.
+
+The pipeline also maps resting-like labels, such as sitting, lying, and sleeping, to the general `resting` behavior.
+
+Train and evaluate the classifier using the scripts in `scripts/classification/`. The trained classifier weights are used by the behavior monitoring pipeline.
+
+Example model path:
+
+```text
+models/civet_classifier_yolo11n/weights/best.pt
 ```
 
-Replace the model path and video path with the actual locations of your files.
+## 8. Test the Models on CCTV Footage
 
-Parameters:
+Test both models using footage that was not used during training.
 
-| Parameter | Purpose |
+For the detection model, inspect:
+
+- Missed detections.
+- Duplicate bounding boxes around the same civet.
+- False positives from trays, bushes, and shadows.
+- Partial occlusion.
+- Daytime and nighttime performance.
+
+For the classification model, inspect:
+
+- Incorrect behavior predictions.
+- Confusion between eating and resting.
+- Predictions with low confidence.
+- Performance on different civet positions and camera views.
+
+Use unfamiliar footage whenever possible to evaluate real-world performance.
+
+## 9. Behavior Monitoring Pipeline
+
+The behavior monitoring pipeline combines the civet detector, movement analyzer, and behavior classifier to process CCTV footage and generate activity and behavior records.
+
+### 9.1 Pipeline Overview
+
+```text
+CCTV Video
+    |
+    v
+Frame Sampling
+    |
+    v
+Civet Detection (YOLO11n)
+    |
+    v
+Civet Bounding Box and Crop
+    |
+    +--------------------------+
+    |                          |
+    v                          v
+Movement Analysis        Behavior Classification
+    |                          |
+    v                          v
+Locomotion /              Eating / Resting
+Stationary / Unknown           |
+    |                          |
+    +-------------+------------+
+                  |
+                  v
+           Activity Analysis
+                  |
+                  v
+        Activity State Tracking
+                  |
+          +-------+-------+
+          |               |
+          v               v
+        Active          Inactive
+          |               |
+          +-------+-------+
+                  |
+                  v
+          Event Tracking
+                  |
+                  v
+           Output Records
+```
+
+### 9.2 Activity States
+
+The pipeline identifies three overall activity states:
+
+| State | Description |
 |---|---|
-| `model` | Path to the trained `best.pt` weights |
-| `source` | Path to the CCTV video to test |
-| `conf=0.25` | Minimum detection confidence |
-| `iou=0.45` | IoU threshold used for non-maximum suppression |
-| `imgsz=640` | Inference image size |
-| `save=True` | Saves the annotated output video |
+| `active` | The civet is moving (locomotion) or eating. |
+| `inactive` | The civet is detected, stationary, and classified as resting. |
+| `not_visible` | The detector cannot locate the civet for longer than the configured tolerance. |
 
-The confidence and IoU values are starting points, not guaranteed optimal settings.
+Activity transitions are confirmed over a configurable duration to reduce rapid state changes caused by inconsistent predictions.
 
-### 9.2 Find the output
+Unknown predictions are handled separately rather than automatically being classified as inactive.
 
-Ultralytics saves inference results under a directory similar to:
+### 9.3 Movement Analysis
+
+The movement analyzer uses changes in the center of the civet's bounding box to estimate movement speed.
+
+- `locomotion` – Movement speed reaches or exceeds the configured threshold.
+- `stationary` – Movement speed remains below the threshold.
+- `unknown` – There is insufficient movement history to determine the state.
+
+Movement analysis helps distinguish locomotion from stationary behaviors such as eating and resting.
+
+### 9.4 Behavior Classification
+
+When the civet is detected and classified as stationary, its image crop is passed to the behavior classifier.
+
+The current classifier recognizes:
+
+- `eating`
+- `resting`
+
+Locomotion is determined through movement analysis rather than the behavior classifier.
+
+Predictions below the configured confidence threshold are treated as uncertain.
+
+### 9.5 Eating Event Tracking
+
+The pipeline records eating episodes separately from overall activity states.
+
+Each eating event includes:
+
+- Event ID.
+- Start time.
+- End time.
+- Duration.
+
+The event tracker uses a minimum duration and gap tolerance to avoid recording very short or interrupted predictions as separate eating events.
+
+The current configuration uses:
+
+- Minimum eating duration: 5 seconds.
+- Gap tolerance: 3 seconds.
+
+The duration includes tolerated interruptions within an eating episode.
+
+### 9.6 Pipeline Outputs
+
+The pipeline generates an annotated video and several CSV files.
+
+| Output | Description |
+|---|---|
+| `annotated_video.mp4` | CCTV footage with detection boxes, behavior labels, and movement information. |
+| `behavior_results.csv` | Frame-level detection, movement, classification, and activity information. |
+| `activity_records.csv` | Confirmed activity intervals, including active and inactive periods. |
+| `eating_records.csv` | Recorded eating episodes with start time, end time, and duration. |
+| `eating_frequency.csv` | Number of eating episodes within each configured time interval. |
+
+The annotated video displays labels such as:
+
+- `ACTIVE` – The civet is moving.
+- `ACTIVE - Eating` – The civet is eating.
+- `INACTIVE - Resting` – The civet is resting.
+
+The CSV records provide more detailed timestamps and information for later analysis.
+
+## 10. Configure and Run the Behavior Pipeline
+
+Open:
 
 ```text
-runs/detect/predict/
+configs/behavior_pipeline_config.json
 ```
 
-If the directory already exists, Ultralytics may create a numbered directory such as `predict2` or `predict3`. Check the terminal output for the exact save location.
+This file controls the models, input video, detection settings, classification settings, movement threshold, activity transition settings, eating event settings, and output configuration.
 
-Open the output video and inspect the detection boxes and confidence values throughout the clip.
+Example configuration:
 
-### 9.3 What to check
+```json
+{
+    "models": {
+        "detector": "models/civet_detector_yolo11n-2/weights/best.pt",
+        "classifier": "models/civet_classifier_yolo11n/weights/best.pt"
+    },
+    "video": {
+        "input": "data/videos/locomotion11.mp4",
+        "sample_fps": 8
+    },
+    "detection": {
+        "confidence": 0.25,
+        "image_size": 640
+    },
+    "classification": {
+        "image_size": 224,
+        "minimum_confidence": 0.70
+    },
+    "movement": {
+        "movement_threshold": 70.0,
+        "movement_window": 3
+    },
+    "activity": {
+        "transition_duration": 3.0,
+        "unknown_tolerance": 3.0,
+        "not_visible_tolerance": 3.0
+    },
+    "eating": {
+        "minimum_duration": 5.0,
+        "gap_tolerance": 3.0
+    },
+    "cropping": {
+        "padding_ratio": 0.10
+    },
+    "output": {
+        "directory": "outputs/behavior_pipeline",
+        "video_filename": "annotated_video.mp4",
+        "csv_filename": "behavior_results.csv",
+        "activity_csv_filename": "activity_records.csv",
+        "eating_csv_filename": "eating_records.csv",
+        "frequency_csv_filename": "eating_frequency.csv",
+        "frequency_interval_seconds": 3600
+    }
+}
+```
 
-Pay particular attention to:
+Update the model paths and input video path to match your files before running the pipeline.
 
-- **Missed detections:** The civet is visible, but no box appears.
-- **Duplicate detections:** Multiple boxes appear around the same civet.
-- **False positives:** The model detects a food tray, bush, shadow, or other background object as a civet.
-- **Eating poses:** Detection becomes unreliable when the civet bends its head, turns, or crouches near the tray.
-- **Partial occlusion:** The model loses the civet when part of its body is hidden.
-- **Nighttime footage:** Detection disappears when the civet's outline blends into the ground.
+Run the pipeline from the project root:
 
-Record the approximate video timestamps of these failures so the corresponding frames can be reviewed and used to improve the dataset.
+```bash
+python scripts/behavior_pipeline/main.py
+```
 
-## 10. Improve the Model
+### Configuration Reference
 
-If detection is unreliable, identify the failure type before changing model settings.
+| Setting | Description |
+|---|---|
+| `sample_fps` | Number of video frames processed per second. |
+| `detection.confidence` | Minimum confidence for civet detection. |
+| `classification.minimum_confidence` | Minimum confidence for accepting a behavior prediction. |
+| `movement_threshold` | Movement speed threshold in pixels per second. |
+| `movement_window` | Number of sampled positions used for movement analysis. |
+| `transition_duration` | Time required to confirm an activity state transition. |
+| `unknown_tolerance` | Maximum tolerated duration of uncertain classification. |
+| `not_visible_tolerance` | Time before the civet is considered not visible. |
+| `minimum_duration` | Minimum duration required to confirm an eating event. |
+| `gap_tolerance` | Maximum interruption tolerated within an eating event. |
+| `frequency_interval_seconds` | Time interval used to count eating events. `3600` represents one hour. |
+| `cropping.padding_ratio` | Additional padding around the detected civet crop. |
 
-- Add diverse training examples for underrepresented poses and lighting conditions.
-- Include useful background-only images containing trays, bushes, and shadows.
+### Output Location
+
+By default, pipeline results are saved in:
+
+```text
+outputs/behavior_pipeline/
+```
+
+The directory contains the annotated video and CSV records. Output filenames and directory can be changed in `behavior_pipeline_config.json`.
+
+## 11. Improve Model Performance
+
+If the system produces unreliable results, identify the failure type before changing model settings.
+
+**Detection issues**
+- Add diverse examples for underrepresented poses and lighting conditions.
+- Include background-only images containing trays, bushes, and shadows.
 - Review bounding boxes for inconsistent or incorrect annotations.
-- Compare enhancement settings on the same original frames before regenerating the dataset.
-- Keep training, validation, and test data separated by source video.
-- Retrain after updating the dataset, then test on held-out footage.
+- Test on unfamiliar CCTV footage.
 
-Avoid judging the model solely by confidence scores or validation mAP. A model can achieve strong validation metrics while still struggling with unfamiliar poses or real-world lighting.
+**Classification issues**
+- Add more examples of difficult eating and resting poses.
+- Check for class imbalance.
+- Review incorrect predictions and low-confidence results.
+- Make sure training crops represent the appearance of civets in actual CCTV footage.
+
+**Movement and activity issues**
+- Review movement threshold settings if bounding-box jitter is incorrectly interpreted as locomotion.
+- Check transition confirmation and unknown tolerances if activity states change too frequently or take too long to update.
+- Evaluate the system on longer footage to identify problems that may not appear in short clips.
+
+Avoid judging the system solely by confidence scores or validation metrics. Strong validation results do not guarantee reliable performance on unfamiliar CCTV footage.
 
 ## Notes
 
-- Frame extraction, frame selection, enhancement, annotation, training, and inference are separate stages.
+- Frame extraction, enhancement, annotation, training, and inference are separate stages.
 - Keep original CCTV footage unchanged.
-- Apply the same preprocessing pipeline during training and real-footage inference.
-- Do not use test images to tune the model repeatedly; reserve the test set for independent evaluation.
-- Do not commit large CCTV videos, datasets, or trained weights to Git unless necessary and permitted.
+- Apply consistent preprocessing to training and inference data.
+- Split datasets by source video to prevent data leakage.
+- Keep the test set separate from training and validation data.
+- The behavior pipeline currently assumes one civet in the monitored environment.
+- Do not commit large CCTV videos, datasets, or trained model weights to Git unless necessary and permitted.
