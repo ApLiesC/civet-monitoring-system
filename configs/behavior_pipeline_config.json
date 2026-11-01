@@ -6,7 +6,7 @@
     },
 
     "video": {
-        "input": "data/videos/locomotion11.mp4",
+        "input": "data/videos/resting9.mp4",
         "sample_fps": 8
     },
 
@@ -16,7 +16,24 @@
     },
 
     "classification": {
-        "image_size": 224
+        "image_size": 224,
+        "minimum_confidence": 0.70
+    },
+
+    "movement": {
+        "movement_threshold": 70.0,
+        "movement_window": 3
+    },
+
+    "activity": {
+        "transition_duration": 3.0,
+        "unknown_tolerance": 3.0,
+        "not_visible_tolerance": 3.0
+    },
+
+    "eating": {
+        "minimum_duration": 5.0,
+        "gap_tolerance": 3.0
     },
 
     "cropping": {
@@ -26,6 +43,10 @@
     "output": {
         "directory": "outputs/behavior_pipeline",
         "video_filename": "annotated_video.mp4",
-        "csv_filename": "behavior_results.csv"
+        "csv_filename": "behavior_results.csv",
+        "activity_csv_filename": "activity_records.csv",
+        "eating_csv_filename": "eating_records.csv",
+        "frequency_csv_filename": "eating_frequency.csv",
+        "frequency_interval_seconds": 3600
     }
 }
