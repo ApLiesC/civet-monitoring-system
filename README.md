@@ -275,18 +275,25 @@ Stationary / Unknown           |
                   v
         Activity State Tracking
                   |
-          +-------+-------+
-          |               |
-          v               v
-        Active          Inactive
-          |               |
-          +-------+-------+
+        +---------+---------+
+        |         |         |
+        v         v         v
+      Active   Inactive  Not Visible
+        |         |         |
+        +---------+---------+
                   |
                   v
           Event Tracking
                   |
+          +-------+-------+
+          |               |
+          v               v
+    Activity Records  Eating Records
+          |               |
+          +-------+-------+
+                  |
                   v
-           Output Records
+             Output Files
 ```
 
 ### 9.2 Activity States
@@ -348,13 +355,13 @@ The duration includes tolerated interruptions within an eating episode.
 
 ### 9.6 Pipeline Outputs
 
-The pipeline generates an annotated video and several CSV files.
+After processing the CCTV footage, the behavior monitoring pipeline generates an annotated video and several CSV files.
 
 | Output | Description |
 |---|---|
 | `annotated_video.mp4` | CCTV footage with detection boxes, behavior labels, and movement information. |
 | `behavior_results.csv` | Frame-level detection, movement, classification, and activity information. |
-| `activity_records.csv` | Confirmed activity intervals, including active and inactive periods. |
+| `activity_records.csv` | Confirmed activity intervals, including active, inactive, and not visible periods. |
 | `eating_records.csv` | Recorded eating episodes with start time, end time, and duration. |
 | `eating_frequency.csv` | Number of eating episodes within each configured time interval. |
 
@@ -363,140 +370,15 @@ The annotated video displays labels such as:
 - `ACTIVE` – The civet is moving.
 - `ACTIVE - Eating` – The civet is eating.
 - `INACTIVE - Resting` – The civet is resting.
+- `NOT VISIBLE` – The civet cannot be detected.
 
-The CSV records provide more detailed timestamps and information for later analysis.
+The CSV files contain detailed timestamps and records for further analysis and report generation.
 
-## 10. Configure and Run the Behavior Pipeline
+### 9.7 Excel Monitoring Report
 
-Open:
+The project includes an Excel report generator that uses the pipeline outputs to create a formatted workbook for reviewing civet activity and eating frequency.
 
-```text
-configs/behavior_pipeline_config.json
-```
-
-This file controls the models, input video, detection settings, classification settings, movement threshold, activity transition settings, eating event settings, and output configuration.
-
-Example configuration:
-
-```json
-{
-    "models": {
-        "detector": "models/civet_detector_yolo11n-2/weights/best.pt",
-        "classifier": "models/civet_classifier_yolo11n/weights/best.pt"
-    },
-    "video": {
-        "input": "data/videos/locomotion11.mp4",
-        "sample_fps": 8
-    },
-    "detection": {
-        "confidence": 0.25,
-        "image_size": 640
-    },
-    "classification": {
-        "image_size": 224,
-        "minimum_confidence": 0.70
-    },
-    "movement": {
-        "movement_threshold": 70.0,
-        "movement_window": 3
-    },
-    "activity": {
-        "transition_duration": 3.0,
-        "unknown_tolerance": 3.0,
-        "not_visible_tolerance": 3.0
-    },
-    "eating": {
-        "minimum_duration": 5.0,
-        "gap_tolerance": 3.0
-    },
-    "cropping": {
-        "padding_ratio": 0.10
-    },
-    "output": {
-        "directory": "outputs/behavior_pipeline",
-        "video_filename": "annotated_video.mp4",
-        "csv_filename": "behavior_results.csv",
-        "activity_csv_filename": "activity_records.csv",
-        "eating_csv_filename": "eating_records.csv",
-        "frequency_csv_filename": "eating_frequency.csv",
-        "frequency_interval_seconds": 3600
-    }
-}
-```
-
-Update the model paths and input video path to match your files before running the pipeline.
-
-Run the pipeline from the project root:
-
-```bash
-python scripts/behavior_pipeline/main.py
-```
-
-### Configuration Reference
-
-| Setting | Description |
-|---|---|
-| `sample_fps` | Number of video frames processed per second. |
-| `detection.confidence` | Minimum confidence for civet detection. |
-| `classification.minimum_confidence` | Minimum confidence for accepting a behavior prediction. |
-| `movement_threshold` | Movement speed threshold in pixels per second. |
-| `movement_window` | Number of sampled positions used for movement analysis. |
-| `transition_duration` | Time required to confirm an activity state transition. |
-| `unknown_tolerance` | Maximum tolerated duration of uncertain classification. |
-| `not_visible_tolerance` | Time before the civet is considered not visible. |
-| `minimum_duration` | Minimum duration required to confirm an eating event. |
-| `gap_tolerance` | Maximum interruption tolerated within an eating event. |
-| `frequency_interval_seconds` | Time interval used to count eating events. `3600` represents one hour. |
-| `cropping.padding_ratio` | Additional padding around the detected civet crop. |
-
-### Output Location
-
-By default, pipeline results are saved in:
-
-```text
-outputs/behavior_pipeline/
-```
-
-The directory contains the annotated video and CSV records. Output filenames and directory can be changed in `behavior_pipeline_config.json`.
-
-## 11. Improve Model Performance
-
-If the system produces unreliable results, identify the failure type before changing model settings.
-
-**Detection issues**
-- Add diverse examples for underrepresented poses and lighting conditions.
-- Include background-only images containing trays, bushes, and shadows.
-- Review bounding boxes for inconsistent or incorrect annotations.
-- Test on unfamiliar CCTV footage.
-
-**Classification issues**
-- Add more examples of difficult eating and resting poses.
-- Check for class imbalance.
-- Review incorrect predictions and low-confidence results.
-- Make sure training crops represent the appearance of civets in actual CCTV footage.
-
-**Movement and activity issues**
-- Review movement threshold settings if bounding-box jitter is incorrectly interpreted as locomotion.
-- Check transition confirmation and unknown tolerances if activity states change too frequently or take too long to update.
-- Evaluate the system on longer footage to identify problems that may not appear in short clips.
-
-Avoid judging the system solely by confidence scores or validation metrics. Strong validation results do not guarantee reliable performance on unfamiliar CCTV footage.
-
-## Notes
-
-- Frame extraction, enhancement, annotation, training, and inference are separate stages.
-- Keep original CCTV footage unchanged.
-- Apply consistent preprocessing to training and inference data.
-- Split datasets by source video to prevent data leakage.
-- Keep the test set separate from training and validation data.
-- The behavior pipeline currently assumes one civet in the monitored environment.
-- Do not commit large CCTV videos, datasets, or trained model weights to Git unless necessary and permitted.
-
-## Excel Monitoring Report
-
-The project includes an Excel report generator that converts the behavior monitoring pipeline outputs into a formatted workbook for reviewing civet activity and eating frequency.
-
-The generated report is named:
+The generated workbook is named:
 
 ```text
 civet_monitoring_report.xlsx
@@ -504,9 +386,9 @@ civet_monitoring_report.xlsx
 
 The report contains three worksheets.
 
-### 1. Activity Summary
+#### 1. Activity Summary
 
-Displays the civet's recorded activity intervals in three separate groups:
+Displays the civet's recorded activity intervals in three separate groups.
 
 | Activity State | Information |
 |---|---|
@@ -516,7 +398,7 @@ Displays the civet's recorded activity intervals in three separate groups:
 
 Each group has its own sequence numbering, making it easier to review activity periods independently.
 
-### 2. Eating Frequency
+#### 2. Eating Frequency
 
 Displays the frequency of recorded eating events over configured time intervals.
 
@@ -527,7 +409,7 @@ Displays the frequency of recorded eating events over configured time intervals.
 
 The report uses the eating frequency CSV and can also use individual eating-event records as a fallback when frequency counts are unavailable.
 
-### 3. Visualization
+#### 3. Visualization
 
 Provides an overview of the CCTV recording and the civet's activity distribution.
 
@@ -537,9 +419,11 @@ It includes:
 - **Activity Summary** – Total duration and percentage of time spent in Active, Inactive, and Not Visible states.
 - **Activity Distribution** – A pie chart comparing Active and Inactive durations. Not Visible time is excluded from this chart.
 
-### Report Output
+#### Report Output
 
 The Excel workbook is saved in the output directory specified when initializing the report generator.
+
+The expected output structure is:
 
 ```text
 outputs/
@@ -552,6 +436,6 @@ outputs/
     └── civet_monitoring_report.xlsx
 ```
 
-The report generator uses the pipeline's activity records, eating-event records, eating-frequency records, and recording metadata to produce the workbook.
+The report generator uses the activity records, eating-event records, eating-frequency records, and recording metadata to produce the workbook.
 
 Each worksheet is formatted for A4 portrait printing, with the content fitted to one page where possible.
