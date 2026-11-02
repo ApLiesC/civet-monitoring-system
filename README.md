@@ -491,3 +491,67 @@ Avoid judging the system solely by confidence scores or validation metrics. Stro
 - Keep the test set separate from training and validation data.
 - The behavior pipeline currently assumes one civet in the monitored environment.
 - Do not commit large CCTV videos, datasets, or trained model weights to Git unless necessary and permitted.
+
+## Excel Monitoring Report
+
+The project includes an Excel report generator that converts the behavior monitoring pipeline outputs into a formatted workbook for reviewing civet activity and eating frequency.
+
+The generated report is named:
+
+```text
+civet_monitoring_report.xlsx
+```
+
+The report contains three worksheets.
+
+### 1. Activity Summary
+
+Displays the civet's recorded activity intervals in three separate groups:
+
+| Activity State | Information |
+|---|---|
+| Active | Start and stop times of active periods. |
+| Inactive | Start and stop times of inactive periods. |
+| Not Visible | Start and stop times when the civet cannot be detected. |
+
+Each group has its own sequence numbering, making it easier to review activity periods independently.
+
+### 2. Eating Frequency
+
+Displays the frequency of recorded eating events over configured time intervals.
+
+| Column | Description |
+|---|---|
+| Duration | The time interval being analyzed. |
+| Frequency - Eating | Number of eating events recorded during that interval. |
+
+The report uses the eating frequency CSV and can also use individual eating-event records as a fallback when frequency counts are unavailable.
+
+### 3. Visualization
+
+Provides an overview of the CCTV recording and the civet's activity distribution.
+
+It includes:
+
+- **Recording Information** – Recording date, start time, end time, and total video duration.
+- **Activity Summary** – Total duration and percentage of time spent in Active, Inactive, and Not Visible states.
+- **Activity Distribution** – A pie chart comparing Active and Inactive durations. Not Visible time is excluded from this chart.
+
+### Report Output
+
+The Excel workbook is saved in the output directory specified when initializing the report generator.
+
+```text
+outputs/
+└── behavior_pipeline/
+    ├── annotated_video.mp4
+    ├── behavior_results.csv
+    ├── activity_records.csv
+    ├── eating_records.csv
+    ├── eating_frequency.csv
+    └── civet_monitoring_report.xlsx
+```
+
+The report generator uses the pipeline's activity records, eating-event records, eating-frequency records, and recording metadata to produce the workbook.
+
+Each worksheet is formatted for A4 portrait printing, with the content fitted to one page where possible.
