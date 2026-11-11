@@ -94,6 +94,10 @@ class BehaviorOutput:
             "y1",
             "x2",
             "y2",
+            "food_tray_count",
+            "is_near_tray",
+            "normalized_distance",
+            "decision_reason",
             "movement_state",
             "movement_speed",
             "behavior",
@@ -174,6 +178,7 @@ class BehaviorOutput:
             "not_detected": "CIVET NOT DETECTED",
             "movement_unknown": "MOVEMENT UNKNOWN",
             "classification_failed": "CLASSIFICATION UNCERTAIN",
+            "evidence_insufficient": "EVIDENCE INSUFFICIENT",
         }
 
         return status_labels.get(status, "UNKNOWN")
@@ -254,21 +259,31 @@ class BehaviorOutput:
         movement = result["movement"]
         classification = result["classification"]
 
+        proximity = result.get("proximity") or {}
+        decision = result.get("decision") or {}
+
         behavior = result["behavior"]
         activity_state = result["activity_state"]
         pending_state = result["pending_activity_state"]
 
         # 1. Detection information.
-        detected = detection is not None
+        civet_detection = None
+        food_tray_detections = []
+
+        if detection is not None:
+            civet_detection = detection.get("civet")
+            food_tray_detections = detection.get("food_trays", [])
+
+        detected = civet_detection is not None
         detection_confidence = None
         bbox = None
 
         if detected:
-            detection_confidence = detection["confidence"]
+            detection_confidence = civet_detection["confidence"]
 
             bbox = [
                 int(value)
-                for value in detection["bbox"]
+                for value in civet_detection["bbox"]
             ]
 
             x1, y1, x2, y2 = bbox
@@ -279,6 +294,34 @@ class BehaviorOutput:
                 (x2, y2),
                 (0, 255, 0),
                 2,
+            )
+
+        # Draw detected food trays.
+        for tray in food_tray_detections:
+            tray_bbox = [
+                int(value)
+                for value in tray["bbox"]
+            ]
+
+            tray_x1, tray_y1, tray_x2, tray_y2 = tray_bbox
+
+            cv2.rectangle(
+                frame,
+                (tray_x1, tray_y1),
+                (tray_x2, tray_y2),
+                (255, 0, 0),
+                2,
+            )
+
+            cv2.putText(
+                frame,
+                "Food tray",
+                (tray_x1, max(15, tray_y1 - 5)),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.5,
+                (255, 0, 0),
+                2,
+                cv2.LINE_AA,
             )
 
         # 2. Movement information.
@@ -293,7 +336,12 @@ class BehaviorOutput:
                 "confidence"
             )
 
-        # 4. Write frame-level CSV.
+        # 4. Proximity and behavior decision information.
+        is_near_tray = proximity.get("is_near_tray")
+        normalized_distance = proximity.get("normalized_distance")
+        decision_reason = decision.get("reason")
+
+        # 5. Write frame-level CSV.
         cctv_timestamp = self.format_cctv_timestamp(
             result.get("cctv_timestamp")
         )
@@ -306,6 +354,10 @@ class BehaviorOutput:
             detected,
             detection_confidence,
             *(bbox if bbox is not None else [None] * 4),
+            len(food_tray_detections),
+            is_near_tray,
+            normalized_distance,
+            decision_reason,
             movement_state,
             movement_speed,
             behavior,
@@ -314,7 +366,7 @@ class BehaviorOutput:
             classification_confidence,
         ])
 
-        # 5. Display activity and behavior label.
+        # 6. Display activity and behavior label.
         label = self.get_behavior_label(
             behavior=behavior,
             status=result["status"],
@@ -326,7 +378,7 @@ class BehaviorOutput:
             bbox=bbox,
         )
 
-        # 6. Display debugging information.
+        # 7. Display debugging information.
         if movement_speed is not None:
             movement_text = (
                 f"Movement: {movement_speed:.1f} px/sec"
@@ -362,7 +414,7 @@ class BehaviorOutput:
                 cv2.LINE_AA,
             )
 
-        # 7. Initialize and write annotated video.
+        # 8. Initialize and write annotated video.
         if self.video_writer is None:
             height, width = frame.shape[:2]
 

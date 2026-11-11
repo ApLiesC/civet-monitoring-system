@@ -226,6 +226,7 @@ def main():
         "classified": 0,
         "classification_failed": 0,
         "movement_unknown": 0,
+        "evidence_insufficient": 0,
         "not_detected": 0,
     }
 
@@ -249,7 +250,12 @@ def main():
 
             stats["total"] += 1
 
-            if result["detection"] is not None:
+            detection = result["detection"]
+
+            if (
+                detection is not None
+                and detection.get("civet") is not None
+            ):
                 stats["detected"] += 1
 
             status = result["status"]
@@ -265,6 +271,9 @@ def main():
 
             elif status == "movement_unknown":
                 stats["movement_unknown"] += 1
+
+            elif status == "evidence_insufficient":
+                stats["evidence_insufficient"] += 1
 
             elif status == "not_detected":
                 stats["not_detected"] += 1
@@ -331,6 +340,11 @@ def main():
         print(
             f"Movement unknown frames: "
             f"{stats['movement_unknown']}"
+        )
+
+        print(
+            f"Evidence insufficient frames: "
+            f"{stats['evidence_insufficient']}"
         )
 
         print(f"Frames without detection: {stats['not_detected']}")

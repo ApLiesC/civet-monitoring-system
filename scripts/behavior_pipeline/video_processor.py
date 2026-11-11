@@ -7,6 +7,8 @@ from datetime import datetime, date, time, timedelta
 from activity_state_manager import ActivityStateManager
 from eating_event_tracker import EatingEventTracker
 from cctv_timestamp_reader import CCTVTimestampReader
+from food_tray_analyzer import FoodTrayAnalyzer
+from behavior_decision_engine import BehaviorDecisionEngine
 
 
 class BehaviorVideoProcessor:
@@ -22,6 +24,8 @@ class BehaviorVideoProcessor:
         not_visible_tolerance=3.0,
         eating_minimum_duration=5.0,
         eating_gap_tolerance=3.0,
+        food_tray_analyzer=None,
+        decision_engine=None,
     ):
         self.detector = detector
         self.classifier = classifier
@@ -29,6 +33,22 @@ class BehaviorVideoProcessor:
         self.sample_fps = sample_fps
         self.minimum_classification_confidence = (
             minimum_classification_confidence
+        )
+
+        self.food_tray_analyzer = (
+            food_tray_analyzer
+            if food_tray_analyzer is not None
+            else FoodTrayAnalyzer()
+        )
+
+        self.decision_engine = (
+            decision_engine
+            if decision_engine is not None
+            else BehaviorDecisionEngine(
+                classifier_confidence_threshold=(
+                    minimum_classification_confidence
+                )
+            )
         )
 
         self.activity_manager = ActivityStateManager(
@@ -432,6 +452,8 @@ class BehaviorVideoProcessor:
                     detection = self.detector.detect(frame)
 
                     classification = None
+                    proximity = None
+                    decision = None
                     behavior = None
                     unknown_reason = None
 
@@ -439,7 +461,19 @@ class BehaviorVideoProcessor:
                     # 1. Detection
                     # -----------------------------------------
 
-                    if detection is None:
+                    civet_detection = (
+                        detection.get("civet")
+                        if detection is not None
+                        else None
+                    )
+
+                    food_tray_detections = (
+                        detection.get("food_trays", [])
+                        if detection is not None
+                        else []
+                    )
+
+                    if civet_detection is None:
                         movement = self.movement_analyzer.update(
                             bbox=None,
                             timestamp=timestamp,
@@ -454,39 +488,70 @@ class BehaviorVideoProcessor:
                         # -------------------------------------
 
                         movement = self.movement_analyzer.update(
-                            bbox=detection["bbox"],
+                            bbox=civet_detection["bbox"],
                             timestamp=timestamp,
                         )
 
                         movement_state = movement["state"]
 
-                        if movement_state == "locomotion":
-                            behavior = "locomotion"
-                            status = "locomotion"
+                        # -------------------------------------
+                        # 3. Food tray proximity analysis
+                        # -------------------------------------
 
-                        elif movement_state == "stationary":
-                            # 3. Behavior classification
+                        proximity = self.food_tray_analyzer.analyze(
+                            civet_detection=civet_detection,
+                            food_tray_detections=food_tray_detections,
+                        )
+
+                        # -------------------------------------
+                        # 4. Behavior classification
+                        # -------------------------------------
+
+                        if movement_state == "stationary":
                             classification = self.classifier.classify(
-                                detection["crop"]
+                                civet_detection["crop"]
                             )
 
-                            behavior = self._normalize_classification(
+                        # -------------------------------------
+                        # 5. Evidence-based behavior decision
+                        # -------------------------------------
+
+                        normalized_behavior = (
+                            self._normalize_classification(
                                 classification
                             )
+                        )
 
-                            if behavior is None:
-                                status = "classification_failed"
-                                unknown_reason = "classification"
-                            else:
-                                status = "classified"
+                        classification_for_decision = None
+
+                        if normalized_behavior is not None:
+                            classification_for_decision = {
+                                "behavior": normalized_behavior,
+                                "confidence": classification.get(
+                                    "confidence"
+                                ),
+                            }
+
+                        decision = self.decision_engine.decide(
+                            movement_state=movement_state,
+                            classification=classification_for_decision,
+                            proximity=proximity,
+                        )
+
+                        behavior = decision["behavior"]
+
+                        if behavior == "locomotion":
+                            status = "locomotion"
+
+                        elif behavior in {"eating", "resting"}:
+                            status = "classified"
 
                         else:
-                            # Movement needs more samples.
-                            status = "movement_unknown"
+                            status = "evidence_insufficient"
                             unknown_reason = "classification"
 
                     # -----------------------------------------
-                    # 4. Update both trackers
+                    # 6. Update both trackers
                     # -----------------------------------------
 
                     (
@@ -516,6 +581,8 @@ class BehaviorVideoProcessor:
                         "detection": detection,
                         "movement": movement,
                         "classification": classification,
+                        "proximity": proximity,
+                        "decision": decision,
                         "behavior": behavior,
                         "activity_state": activity_result["state"],
                         "pending_activity_state": (
@@ -528,7 +595,7 @@ class BehaviorVideoProcessor:
                 frame_index += 1
 
             # ---------------------------------------------
-            # 5. Finalize records
+            # 7. Finalize records
             # ---------------------------------------------
 
             self.activity_records = (

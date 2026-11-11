@@ -95,7 +95,6 @@ class ActivityStateManager:
 
     def _update_unknown(self, timestamp, reason):
         """Handle uncertainty without incorrectly recording inactivity."""
-        self._clear_pending()
 
         if reason == "detection":
             self.unknown_since = None
@@ -106,6 +105,7 @@ class ActivityStateManager:
             missing_duration = timestamp - self.not_visible_since
 
             if missing_duration >= self.not_visible_tolerance:
+                self._clear_pending()
                 self._accept_state(
                     "not_visible",
                     self.not_visible_since,
@@ -122,6 +122,7 @@ class ActivityStateManager:
             if unknown_duration >= self.unknown_tolerance:
                 # Do not label an uncertain period as inactive.
                 # Close the previous interval and leave a gap.
+                self._clear_pending()
                 self._close_current(self.unknown_since)
 
         else:
