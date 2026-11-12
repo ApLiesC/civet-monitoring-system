@@ -4,11 +4,11 @@
 import cv2
 from datetime import datetime, date, time, timedelta
 
-from activity_state_manager import ActivityStateManager
-from eating_event_tracker import EatingEventTracker
-from cctv_timestamp_reader import CCTVTimestampReader
-from food_tray_analyzer import FoodTrayAnalyzer
-from behavior_decision_engine import BehaviorDecisionEngine
+from scripts.behavior_pipeline.tracking.activity_state_manager import ActivityStateManager
+from scripts.behavior_pipeline.tracking.eating_event_tracker import EatingEventTracker
+from scripts.behavior_pipeline.processing.cctv_timestamp_reader import CCTVTimestampReader
+from scripts.behavior_pipeline.analysis.food_tray_analyzer import FoodTrayAnalyzer
+from scripts.behavior_pipeline.tracking.behavior_decision_engine import BehaviorDecisionEngine
 
 
 class BehaviorVideoProcessor:

@@ -4,12 +4,12 @@
 import json
 from pathlib import Path
 
-from detector import CivetDetector
-from classifier import CivetClassifier
-from movement_analyzer import MovementAnalyzer
-from video_processor import BehaviorVideoProcessor
-from output import BehaviorOutput
-from report_generator import BehaviorReportGenerator
+from scripts.behavior_pipeline.analysis.detector import CivetDetector
+from scripts.behavior_pipeline.analysis.classifier import CivetClassifier
+from scripts.behavior_pipeline.analysis.movement_analyzer import MovementAnalyzer
+from scripts.behavior_pipeline.processing.video_processor import BehaviorVideoProcessor
+from scripts.behavior_pipeline.reporting.output import BehaviorOutput
+from scripts.behavior_pipeline.reporting.report_generator import BehaviorReportGenerator
 
 
 PROJECT_DIR = Path(__file__).resolve().parents[2]
