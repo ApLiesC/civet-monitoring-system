@@ -32,6 +32,28 @@ civet-monitoring-system/
 │
 ├── scripts/
 │   ├── behavior_pipeline/                # Complete behavior monitoring pipeline
+│   │   ├── main.py                       # Pipeline entry point
+│   │   ├── processing/                   # Video input, frame processing, and timestamps
+│   │   │   ├── video_processor.py
+│   │   │   └── cctv_timestamp_reader.py
+│   │   ├── analysis/                      # Detection, classification, and visual analysis
+│   │   │   ├── detector.py
+│   │   │   ├── classifier.py
+│   │   │   ├── movement_analyzer.py
+│   │   │   ├── food_tray_analyzer.py
+│   │   │   └── temporal_behavior_filter.py
+│   │   ├── tracking/                      # Behavior decisions, activity states, and events
+│   │   │   ├── behavior_decision_engine.py
+│   │   │   ├── behavior_confirmer.py
+│   │   │   ├── activity_state_manager.py
+│   │   │   └── eating_event_tracker.py
+│   │   ├── reporting/                     # Pipeline outputs and Excel report generation
+│   │   │   ├── output.py
+│   │   │   └── report_generator.py
+│   │   └── tests/                         # Pipeline component tests
+│   │       ├── test_activity_state_manager.py
+│   │       ├── test_eating_event_tracker.py
+│   │       └── test_timestamp_reader.py
 │   ├── classification/                   # Behavior classifier training and testing
 │   ├── detection/                        # Civet detector training and testing
 │   └── preprocessing/                    # Frame extraction and image enhancement
@@ -276,6 +298,9 @@ The behavior monitoring pipeline combines the civet detector, movement analyzer,
 CCTV Video
     |
     v
+Video Processing and Timestamp Reading
+    |
+    v
 Frame Sampling
     |
     v
@@ -296,10 +321,13 @@ Stationary / Unknown           |
     +-------------+------------+
                   |
                   v
-           Activity Analysis
+        Temporal Behavior Filtering
                   |
                   v
-        Activity State Tracking
+        Behavior Decision and Confirmation
+                  |
+                  v
+           Activity State Tracking
                   |
         +---------+---------+
         |         |         |
@@ -309,7 +337,7 @@ Stationary / Unknown           |
         +---------+---------+
                   |
                   v
-            Event Tracking
+            Eating Event Tracking
                   |
           +-------+-------+
           |               |
@@ -319,10 +347,25 @@ Stationary / Unknown           |
           +-------+-------+
                   |
                   v
-             Output Files
+       CSV / Annotated Video / Excel Report
 ```
 
-### 10.2 Activity States
+### 10.2 Pipeline Code Organization
+
+The behavior pipeline is organized by responsibility under `scripts/behavior_pipeline/`:
+
+| Folder or file | Responsibility | Main modules |
+|---|---|---|
+| Root | Starts and coordinates the pipeline | `main.py` |
+| `processing/` | Reads CCTV video, processes frames, and reads recording timestamps | `video_processor.py`, `cctv_timestamp_reader.py` |
+| `analysis/` | Detects and classifies civets; analyzes movement and food-tray context; filters temporal predictions | `detector.py`, `classifier.py`, `movement_analyzer.py`, `food_tray_analyzer.py`, `temporal_behavior_filter.py` |
+| `tracking/` | Makes and confirms behavior decisions; maintains activity states and eating events | `behavior_decision_engine.py`, `behavior_confirmer.py`, `activity_state_manager.py`, `eating_event_tracker.py` |
+| `reporting/` | Writes pipeline outputs and generates the monitoring report | `output.py`, `report_generator.py` |
+| `tests/` | Holds tests for pipeline components | `test_activity_state_manager.py`, `test_eating_event_tracker.py`, `test_timestamp_reader.py` |
+
+Keep each module in the folder matching its responsibility. When moving existing files, update imports that refer to their old locations and check the entry-point command from the project root. Add `__init__.py` files to the package folders if the project uses package-style imports.
+
+### 10.3 Activity States
 
 The pipeline identifies three overall activity states:
 
@@ -336,7 +379,7 @@ Activity transitions are confirmed over a configurable duration to reduce rapid 
 
 Unknown predictions are handled separately rather than automatically being classified as inactive.
 
-### 10.3 Movement Analysis
+### 10.4 Movement Analysis
 
 The movement analyzer uses changes in the center of the civet's bounding box to estimate movement speed.
 
@@ -346,7 +389,7 @@ The movement analyzer uses changes in the center of the civet's bounding box to 
 
 Movement analysis helps distinguish locomotion from stationary behaviors such as eating and resting.
 
-### 10.4 Behavior Classification
+### 10.5 Behavior Classification
 
 When the civet is detected and classified as stationary, its image crop is passed to the behavior classifier.
 
@@ -359,7 +402,7 @@ Locomotion is determined through movement analysis rather than the behavior clas
 
 Predictions below the configured confidence threshold are treated as uncertain.
 
-### 10.5 Eating Event Tracking
+### 10.6 Eating Event Tracking
 
 The pipeline records eating episodes separately from overall activity states.
 
@@ -379,7 +422,7 @@ The current configuration uses:
 
 The duration includes tolerated interruptions within an eating episode.
 
-### 10.6 Pipeline Outputs
+### 10.7 Pipeline Outputs
 
 After processing the CCTV footage, the behavior monitoring pipeline generates an annotated video and several CSV files.
 
@@ -400,7 +443,7 @@ The annotated video displays labels such as:
 
 The CSV files contain detailed timestamps and records for further analysis and report generation.
 
-### 10.7 Excel Monitoring Report
+### 10.8 Excel Monitoring Report
 
 The project includes an Excel report generator that uses the pipeline outputs to create a formatted workbook for reviewing civet activity and eating frequency.
 
@@ -466,6 +509,29 @@ The report generator uses the activity records, eating-event records, eating-fre
 
 Each worksheet is formatted for A4 portrait printing, with the content fitted to one page where possible.
 
+
+### 10.9 Pipeline Component Tests
+
+The component tests are stored in `scripts/behavior_pipeline/tests/`:
+
+- `test_activity_state_manager.py`
+- `test_eating_event_tracker.py`
+- `test_timestamp_reader.py`
+
+Run the tests using the test runner and import layout configured by the project. For example, if the tests use Python's built-in `unittest` framework and the package imports are configured, run them from the project root with:
+
+```bash
+python -m unittest discover -s scripts/behavior_pipeline/tests
+```
+
+If the project uses `pytest`, run:
+
+```bash
+pytest scripts/behavior_pipeline/tests
+```
+
+Use the command matching the test framework actually used by the test files.
+
 ## 11. Configure and Run the Behavior Pipeline
 
 Pipeline settings are stored in:
@@ -488,13 +554,19 @@ The configuration includes settings for:
 
 Review the configuration before running the pipeline.
 
-Run the pipeline from the project root using:
+Run the pipeline from the project root using the current entry-point command:
 
 ```bash
 python scripts/behavior_pipeline/main.py
 ```
 
-Use the actual script name and command-line arguments supported by your project if they differ.
+After moving modules into the new subfolders, verify that imports in `main.py` and the other modules point to their new locations. If the code uses package-relative imports, ensure the relevant folders contain `__init__.py` files and use the package entry-point form instead:
+
+```bash
+python -m scripts.behavior_pipeline.main
+```
+
+Use the command that matches the imports and package setup in the actual codebase; do not use both commands interchangeably without checking.
 
 ## 12. Improve Model Performance
 
